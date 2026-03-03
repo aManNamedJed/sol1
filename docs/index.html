@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sol 1 - Mars Exploration</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: #0a0a0a;
+        color: #d0d0d0;
+        font-family: "Courier New", monospace;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+      }
+
+      h1 {
+        font-size: 2rem;
+        color: #b8886b;
+        letter-spacing: 3px;
+        font-weight: 300;
+      }
+
+      canvas {
+        border: 2px solid #333;
+        background: #000;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+
+      .info {
+        text-align: center;
+        font-size: 0.9rem;
+        color: #888;
+        line-height: 1.6;
+      }
+
+      .controls {
+        background: #1a1a1a;
+        padding: 15px 25px;
+        border-radius: 4px;
+        max-width: 600px;
+      }
+
+      .controls h3 {
+        color: #b8886b;
+        margin-bottom: 10px;
+        font-size: 1.1rem;
+        font-weight: 400;
+      }
+
+      .controls p {
+        margin: 5px 0;
+        color: #999;
+      }
+
+      .key {
+        background: #2a2a2a;
+        padding: 2px 8px;
+        border-radius: 3px;
+        color: #d0d0d0;
+        font-weight: bold;
+      }
+
+      footer {
+        margin-top: 30px;
+        font-size: 0.8rem;
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>SOL 1</h1>
+
+      <canvas id="canvas" width="800" height="600"></canvas>
+
+      <div class="controls">
+        <h3>Controls</h3>
+        <p><span class="key">↑ ↓ ← →</span> Move robot (costs 1 energy)</p>
+        <p><span class="key">Space</span> Scan area (costs 2 energy)</p>
+        <p><span class="key">E</span> Collect resource (costs 3 energy)</p>
+        <p>
+          <span class="key">B</span> Build charging station (costs 5 energy)
+        </p>
+        <p><span class="key">A</span> Toggle AI autopilot</p>
+      </div>
+
+      <div class="info">
+        <p>Collect ice and return to base to terraform Mars.</p>
+        <p>
+          Watch the sun/moon dial - charging stations only work during the day.
+        </p>
+        <p>
+          <strong
+            >Make it back before energy runs out, or you're stranded.</strong
+          >
+        </p>
+      </div>
+
+      <footer>Sol 1 - A cozy minimalist Mars simulation</footer>
+    </div>
+
+    <script type="module">
+      import init from "./sol1.js";
+
+      async function run() {
+        try {
+          await init();
+          console.log("Sol 1 initialized");
+        } catch (error) {
+          console.error("Failed to initialize:", error);
+          document.body.innerHTML =
+            '<div style="color: #f88; padding: 40px; text-align: center;">Failed to load game. Check console for details.</div>';
+        }
+      }
+
+      run();
+    </script>
+  </body>
+</html>
