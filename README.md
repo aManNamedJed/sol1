@@ -2,6 +2,10 @@
 
 A cozy minimalist top-down Mars exploration game built with Rust and WebAssembly.
 
+## Play Online
+
+**🎮 [Play Sol 1 on GitHub Pages](https://aManNamedJed.github.io/sol1/)**
+
 ## Overview
 
 Sol 1 is a calm, meditative browser game where you control a single robot exploring the Martian surface. There are no enemies, no combat, and no harsh failure states—just a small robot on a large planet, slowly making Mars a little more alive.
@@ -9,9 +13,13 @@ Sol 1 is a calm, meditative browser game where you control a single robot explor
 ### Key Features
 
 - **Minimal & Calm**: Clean visuals, no flashing, no harsh warnings
-- **Energy Management**: Movement costs energy; return to base to recharge
-- **Day/Night Cycle**: Experience Mars's day and night with visual shifts
-- **Gradual Terraforming**: Over time, Mars slowly becomes more hospitable
+- **Energy Management**: Movement costs energy; return to base or charging stations to recharge
+- **Fog of War**: Explore the unknown—only see what's within your vision radius
+- **AI Autopilot**: Watch the robot explore autonomously (press `A` to toggle)
+- **Day/Night Cycle**: Experience Mars's day and night with sun/moon dial indicator
+- **Charging Stations**: Place strategic recharge points (1-day boot-up time)
+- **Ice Terraforming**: Collect ice samples to increase Mars habitability
+- **Resource Depletion**: Ice deposits are finite—explore to find more
 - **Pure WebAssembly**: Runs entirely in the browser, no external assets
 
 ## Architecture
@@ -43,11 +51,13 @@ sol1/
 
 - **Position**: Moves one tile at a time
 - **Energy**: Starts at 100, depletes with actions
-- **Integrity**: Health stat (100)
+- **Integrity**: Health stat (100, currently unused)
+- **Ice Samples**: Carries collected ice (auto-deposits at base)
 - **Actions**:
   - Move: 1 energy per tile
   - Scan: 2 energy
-  - Collect: 3 energy
+  - Collect: 3 energy (depletes ice deposits)
+  - Place Charging Station: 5 energy
 
 ### World
 
@@ -55,37 +65,61 @@ sol1/
 - **Tile Types**:
   - Regolith (Mars soil, default)
   - Rock (impassable)
-  - Ice (resource)
+  - Ice (finite resource, turns to regolith when collected)
   - Base (spawn point, recharge station)
+  - Charging Station (placeable recharge points)
 - **Procedural Generation**: Sparse clusters of rocks and ice
+- **Fog of War**: 6-tile vision radius, explored areas remain visible but dimmed
 
 ### Day/Night Cycle
 
 - Full cycle takes ~2 minutes
-- **Day** (time 0.0–0.5): Recharge energy at base
+- **Day** (time 0.0–0.5): Recharge energy at base or operational charging stations (5 energy/sec)
 - **Night** (time 0.5–1.0): No recharge, darker visuals
+- **Sun/Moon Dial**: Visual indicator in top-right shows current time
 
 ### Energy System
 
 - When energy reaches 0:
-  - Robot powers down (no game over)
+  - Robot powers down
   - Day advances
-  - If at base: full energy restore
-  - If away: emergency power (10 energy)
+  - **Game Over** if not at base or operational charging station
+  - Full energy restore if at valid charging point
 
-### Terraforming
+### Charging Stations
 
-- Every 5 days, Mars health increases slightly
-- Visible as subtle green tint near base
-- Purely aesthetic—no gameplay impact yet
+- Cost: 5 energy to place
+- Boot-up time: 1 full day
+- Can only be placed on regolith or ice (not rocks or other stations)
+- Strategic placement extends exploration range
+
+### Ice Terraforming
+
+- Collect ice samples and return to base (auto-deposits)
+- Base processes 1 ice per 10 seconds
+- Each ice sample increases Mars health by 2%
+- 50 ice samples = 100% terraformed Mars
+- Visible as green tint spreading from base
 
 ## Controls
 
-| Key       | Action           |
-| --------- | ---------------- |
-| `↑ ↓ ← →` | Move robot       |
-| `Space`   | Scan area        |
-| `E`       | Collect resource |
+| Key       | Action                 |
+| --------- | ---------------------- |
+| `↑ ↓ ← →` | Move robot             |
+| `Space`   | Scan area              |
+| `E`       | Collect ice resource   |
+| `B`       | Build charging station |
+| `A`       | Toggle AI autopilot    |
+
+### AI Autopilot
+
+Press `A` to enable/disable autonomous mode. The robot will:
+
+- Explore unexplored areas of Mars
+- Detect and collect ice deposits (when far enough from base)
+- Return to base automatically when carrying 3+ ice samples or low on energy
+- Place charging stations strategically (~30 tiles from base, 15 tiles apart)
+- Manage energy to avoid getting stranded
 
 ## Build Instructions
 
