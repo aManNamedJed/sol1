@@ -22,8 +22,11 @@ impl GameSystems {
             || world.is_charging_station_operational(&robot.position);
 
         if can_recharge {
-            // Slow recharge during day at base or charging station
-            let recharge_rate = 5.0; // 5 energy per second
+            // Base recharge rate is 5.0 energy/sec
+            // Milestone upgrades: +0.5 every 8% (milestones 4, 9, 14, 19, etc.)
+            let milestone = (world.mars_health / 0.02).floor() as u32;
+            let recharge_upgrades = milestone / 5; // Milestone 4, 9, 14, etc.
+            let recharge_rate = 5.0 + (recharge_upgrades as f32 * 0.5);
             robot.recharge(recharge_rate * delta_time);
         }
     }

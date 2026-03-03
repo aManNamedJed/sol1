@@ -1,4 +1,6 @@
 use crate::game::types::{ChargingStationState, Position, TileType};
+#[cfg(target_arch = "wasm32")]
+use js_sys;
 
 pub const WORLD_WIDTH: usize = 200;
 pub const WORLD_HEIGHT: usize = 200;
@@ -23,15 +25,21 @@ impl World {
         let base_y = WORLD_HEIGHT / 2;
         tiles[base_y][base_x] = TileType::Base;
 
+        // Generate random seed using JavaScript's Math.random()
+        #[cfg(target_arch = "wasm32")]
+        let seed = (js_sys::Math::random() * 4294967295.0) as usize;
+        #[cfg(not(target_arch = "wasm32"))]
+        let seed = 12345; // Default seed for non-wasm builds
+
         // Procedural generation: sparse rocks and ice
-        // Using simple pseudo-random based on coordinates
+        // Using simple pseudo-random based on coordinates + random seed
         for y in 0..WORLD_HEIGHT {
             for x in 0..WORLD_WIDTH {
                 if tiles[y][x] == TileType::Base {
                     continue;
                 }
 
-                let hash = Self::hash_coords(x, y);
+                let hash = Self::hash_coords(x, y, seed);
 
                 // 5% chance of rock
                 if hash % 100 < 5 {
@@ -179,10 +187,11 @@ impl World {
         }
     }
 
-    // Simple hash function for procedural generation
-    fn hash_coords(x: usize, y: usize) -> usize {
+    // Simple hash function for procedural generation with random seed
+    fn hash_coords(x: usize, y: usize, seed: usize) -> usize {
         let mut hash = x.wrapping_mul(374761393);
         hash = hash.wrapping_add(y.wrapping_mul(668265263));
+        hash = hash.wrapping_add(seed); // Mix in the random seed
         hash ^= hash >> 13;
         hash = hash.wrapping_mul(1274126177);
         hash ^= hash >> 16;

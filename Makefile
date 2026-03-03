@@ -1,8 +1,16 @@
-.PHONY: build pages clean
+.PHONY: build wasm dev pages clean
 
 # Build the WebAssembly module
 build:
 	wasm-pack build --target web
+
+# Alias for build
+wasm: build
+
+# Start development server
+dev: build
+	@echo "🚀 Starting development server at http://localhost:8000/static/"
+	@python3 -m http.server 8000
 
 # Prepare GitHub Pages deployment
 pages: build

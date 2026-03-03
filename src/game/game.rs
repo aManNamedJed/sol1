@@ -23,6 +23,7 @@ pub struct Game {
     game_over: bool,
     ai: RobotAI,
     ai_enabled: bool,
+    last_milestone: u32, // Tracks highest milestone reached (in 2% increments)
 }
 
 impl Game {
@@ -44,6 +45,7 @@ impl Game {
             game_over: false,
             ai: RobotAI::new(),
             ai_enabled: false,
+            last_milestone: 0,
         }
     }
 
@@ -125,18 +127,24 @@ impl Game {
             self.add_message(format!("Deposited {} ice samples at base", deposited));
         }
 
+        // Check for milestone upgrades
+        self.check_milestones();
+
         // Update fog of war (mark visible tiles as explored)
         self.update_fog_of_war();
     }
 
     fn update_fog_of_war(&mut self) {
-        const VISION_RADIUS: i32 = 6;
+        // Base vision is 6, + 1 every 10% terraform (milestones 1, 6, 11, 16, 21, etc. = 2%, 12%, 22%, etc.)
+        let vision_upgrades = self.last_milestone / 5; // Milestone 1, 6, 11, etc.
+        let vision_radius = 6 + vision_upgrades as i32;
+        
         let robot_pos = self.robot.position;
 
-        for dy in -VISION_RADIUS..=VISION_RADIUS {
-            for dx in -VISION_RADIUS..=VISION_RADIUS {
+        for dy in -vision_radius..=vision_radius {
+            for dx in -vision_radius..=vision_radius {
                 let dist_sq = dx * dx + dy * dy;
-                if dist_sq <= VISION_RADIUS * VISION_RADIUS {
+                if dist_sq <= vision_radius * vision_radius {
                     let pos = Position::new(robot_pos.x + dx, robot_pos.y + dy);
                     self.world.mark_as_explored(&pos);
                 }
@@ -253,6 +261,58 @@ impl Game {
             self.game_over,
             self.ai_enabled,
         )
+    }
+
+    fn check_milestones(&mut self) {
+        // Calculate current milestone (in 2% increments)
+        let current_milestone = (self.world.mars_health / 0.02).floor() as u32;
+        
+        // Check if we've crossed any new milestones
+        if current_milestone > self.last_milestone {
+            for milestone in (self.last_milestone + 1)..=current_milestone {
+                self.apply_milestone_upgrade(milestone);
+            }
+            self.last_milestone = current_milestone;
+        }
+    }
+
+    fn apply_milestone_upgrade(&mut self, milestone: u32) {
+        let percent = milestone * 2;
+        
+        // Cycle through upgrade types for variety
+        match milestone % 5 {
+            1 => {
+                // Vision upgrade (every 2%, 12%, 22%, etc.)
+                self.add_message(format!("{}% Terraform: Vision enhanced", percent));
+            }
+            2 => {
+                // Battery capacity upgrade (every 4%, 14%, 24%, etc.)
+                self.robot.max_energy += 5.0;
+                self.robot.energy = self.robot.energy.min(self.robot.max_energy);
+                self.add_message(format!("{}% Terraform: Battery capacity +5", percent));
+            }
+            3 => {
+                // Movement efficiency (every 6%, 16%, 26%, etc.)
+                self.robot.movement_cost_multiplier = (self.robot.movement_cost_multiplier - 0.04).max(0.4);
+                self.add_message(format!("{}% Terraform: Movement cost reduced", percent));
+            }
+            4 => {
+                // Recharge rate (every 8%, 18%, 28%, etc.)
+                // This will be applied in update_energy_recharge
+                self.add_message(format!("{}% Terraform: Recharge rate +0.5/sec", percent));
+            }
+            0 => {
+                // Collection efficiency (every 10%, 20%, 30%, etc.)
+                self.robot.collection_cost_multiplier = (self.robot.collection_cost_multiplier - 0.08).max(0.3);
+                self.add_message(format!("{}% Terraform: Collection cost reduced", percent));
+            }
+            _ => {}
+        }
+
+        // Special milestone at 100%
+        if percent >= 100 {
+            self.add_message("🎉 Mars Terraforming Complete! 🎉".to_string());
+        }
     }
 
     #[allow(dead_code)]

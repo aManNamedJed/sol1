@@ -416,11 +416,17 @@ impl Renderer {
         // Draw day/night gradient as two semicircles
         // Left half = day (blue), Right half = night (purple)
         // Angles: 0 = right, PI/2 = top, PI = left, 3*PI/2 = bottom
-        
+
         // Day side (light blue) - left half
         ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(135, 206, 235, 0.6)"));
         ctx.begin_path();
-        ctx.arc(dial_x, dial_y, dial_radius - 3.0, std::f64::consts::PI / 2.0, 3.0 * std::f64::consts::PI / 2.0)?;
+        ctx.arc(
+            dial_x,
+            dial_y,
+            dial_radius - 3.0,
+            std::f64::consts::PI / 2.0,
+            3.0 * std::f64::consts::PI / 2.0,
+        )?;
         ctx.close_path();
         ctx.fill();
 

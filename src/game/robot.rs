@@ -8,6 +8,8 @@ pub struct Robot {
     pub integrity: f32,
     pub powered_down: bool,
     pub ice_samples: u32,
+    pub movement_cost_multiplier: f32, // 1.0 = normal, lower = more efficient
+    pub collection_cost_multiplier: f32, // 1.0 = normal, lower = more efficient
 }
 
 impl Robot {
@@ -19,6 +21,8 @@ impl Robot {
             integrity: 100.0,
             powered_down: false,
             ice_samples: 0,
+            movement_cost_multiplier: 1.0,
+            collection_cost_multiplier: 1.0,
         }
     }
 
@@ -27,7 +31,7 @@ impl Robot {
             return false;
         }
 
-        let cost = 1.0;
+        let cost = 1.0 * self.movement_cost_multiplier;
         if self.energy >= cost {
             self.position = new_position;
             self.consume_energy(cost);
@@ -56,7 +60,7 @@ impl Robot {
             return false;
         }
 
-        let cost = 3.0;
+        let cost = 3.0 * self.collection_cost_multiplier;
         if self.energy >= cost {
             self.consume_energy(cost);
             true
