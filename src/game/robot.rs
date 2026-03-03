@@ -41,20 +41,6 @@ impl Robot {
         }
     }
 
-    pub fn scan(&mut self) -> bool {
-        if self.powered_down {
-            return false;
-        }
-
-        let cost = 2.0;
-        if self.energy >= cost {
-            self.consume_energy(cost);
-            true
-        } else {
-            false
-        }
-    }
-
     pub fn collect(&mut self) -> bool {
         if self.powered_down {
             return false;

@@ -304,11 +304,41 @@ impl Renderer {
         let energy_text = format!("ENERGY: {:.0}/{:.0}", robot.energy, robot.max_energy);
         ctx.fill_text(&energy_text, padding + 4.0, padding + 14.0)?;
 
+        // Terraform meter
+        let terraform_y = padding + bar_height + 8.0;
+        let terraform_ratio = world.mars_health.min(1.0) as f64;
+
+        // Terraform bar background
+        ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(0, 0, 0, 0.6)"));
+        ctx.fill_rect(padding, terraform_y, bar_width, bar_height);
+
+        // Terraform bar fill (gradient from red to green)
+        let terraform_color = if terraform_ratio > 0.66 {
+            "rgba(100, 255, 100, 0.8)"
+        } else if terraform_ratio > 0.33 {
+            "rgba(180, 220, 100, 0.8)"
+        } else {
+            "rgba(255, 150, 100, 0.8)"
+        };
+        ctx.set_fill_style(&wasm_bindgen::JsValue::from_str(terraform_color));
+        ctx.fill_rect(
+            padding + 2.0,
+            terraform_y + 2.0,
+            (bar_width - 4.0) * terraform_ratio,
+            bar_height - 4.0,
+        );
+
+        // Terraform text
+        ctx.set_font("11px 'Courier New', monospace");
+        ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(220, 220, 220, 0.9)"));
+        let terraform_text = format!("TERRAFORM: {:.1}%", world.mars_health * 100.0);
+        ctx.fill_text(&terraform_text, padding + 4.0, terraform_y + 13.0)?;
+
         // Day count
         let day_text = format!("SOL {}", world.day_count);
         ctx.set_font("14px 'Courier New', monospace");
         ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(184, 136, 107, 0.9)"));
-        ctx.fill_text(&day_text, padding, padding + bar_height + 24.0)?;
+        ctx.fill_text(&day_text, padding, padding + (bar_height * 2.0) + 28.0)?;
 
         // Time of day indicator
         let time_text = if world.is_day() {
@@ -318,7 +348,7 @@ impl Renderer {
         };
         ctx.set_font("12px 'Courier New', monospace");
         ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(180, 180, 180, 0.8)"));
-        ctx.fill_text(time_text, padding, padding + bar_height + 42.0)?;
+        ctx.fill_text(time_text, padding, padding + (bar_height * 2.0) + 46.0)?;
 
         // Ice samples and stored (if any)
         if robot.ice_samples > 0 || world.ice_stored > 0 {
@@ -328,16 +358,11 @@ impl Renderer {
             );
             ctx.set_font("11px 'Courier New', monospace");
             ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(150, 200, 255, 0.9)"));
-            ctx.fill_text(&ice_text, padding, padding + bar_height + 60.0)?;
+            ctx.fill_text(&ice_text, padding, padding + (bar_height * 2.0) + 64.0)?;
         }
 
-        // Mars health indicator
-        if world.mars_health > 0.01 {
-            let terraform_text = format!("TERRAFORM: {:.0}%", world.mars_health * 100.0);
-            ctx.set_font("11px 'Courier New', monospace");
-            ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(100, 200, 120, 0.9)"));
-            ctx.fill_text(&terraform_text, padding, padding + bar_height + 78.0)?;
-        }
+        // Active powerups/buffs display
+        self.render_active_buffs(ctx, world, robot, padding, bar_height)?;
 
         // Sun/Moon dial (top right)
         self.render_day_night_dial(ctx, world)?;
@@ -389,6 +414,86 @@ impl Renderer {
 
             ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(255, 200, 100, 0.9)"));
             ctx.fill_text(status_text, text_x, text_y)?;
+        }
+
+        Ok(())
+    }
+
+    fn render_active_buffs(
+        &self,
+        ctx: &CanvasRenderingContext2d,
+        world: &World,
+        robot: &Robot,
+        padding: f64,
+        bar_height: f64,
+    ) -> Result<(), wasm_bindgen::JsValue> {
+        // Calculate current milestone (in 2% increments)
+        let current_milestone = (world.mars_health / 0.02).floor() as u32;
+
+        if current_milestone == 0 {
+            return Ok(()); // No buffs yet
+        }
+
+        // Calculate how many of each buff type we have
+        // Milestone cycle: 1=Vision, 2=Battery, 3=Movement, 4=Recharge, 5=Collection, then repeat
+        let vision_upgrades = (current_milestone + 4) / 5; // Milestone 1, 6, 11, etc.
+        let battery_upgrades = (current_milestone + 3) / 5; // Milestone 2, 7, 12, etc.
+        let movement_upgrades = (current_milestone + 2) / 5; // Milestone 3, 8, 13, etc.
+        let recharge_upgrades = (current_milestone + 1) / 5; // Milestone 4, 9, 14, etc.
+        let collection_upgrades = current_milestone / 5; // Milestone 5, 10, 15, etc.
+
+        // Start position for buffs (after energy bar, terraform bar, and other UI elements)
+        let mut y_offset = padding + (bar_height * 2.0) + 82.0;
+
+        // Title
+        ctx.set_font("bold 11px 'Courier New', monospace");
+        ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(255, 215, 120, 0.9)"));
+        ctx.fill_text("⚡ ACTIVE BUFFS:", padding, y_offset)?;
+        y_offset += 16.0;
+
+        ctx.set_font("10px 'Courier New', monospace");
+
+        // Vision buff
+        if vision_upgrades > 0 {
+            let vision_text = format!("👁 Vision +{}", vision_upgrades);
+            ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(180, 220, 255, 0.9)"));
+            ctx.fill_text(&vision_text, padding + 4.0, y_offset)?;
+            y_offset += 14.0;
+        }
+
+        // Battery capacity buff
+        if battery_upgrades > 0 {
+            let battery_bonus = battery_upgrades * 5;
+            let battery_text = format!("🔋 Battery +{}", battery_bonus);
+            ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(100, 255, 100, 0.9)"));
+            ctx.fill_text(&battery_text, padding + 4.0, y_offset)?;
+            y_offset += 14.0;
+        }
+
+        // Movement efficiency buff
+        if movement_upgrades > 0 {
+            let movement_reduction = ((1.0 - robot.movement_cost_multiplier) * 100.0) as u32;
+            let movement_text = format!("🏃 Movement -{movement_reduction}%");
+            ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(255, 220, 120, 0.9)"));
+            ctx.fill_text(&movement_text, padding + 4.0, y_offset)?;
+            y_offset += 14.0;
+        }
+
+        // Recharge rate buff
+        if recharge_upgrades > 0 {
+            let recharge_bonus = recharge_upgrades as f32 * 0.5;
+            let recharge_text = format!("⚡ Recharge +{:.1}/s", recharge_bonus);
+            ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(255, 255, 150, 0.9)"));
+            ctx.fill_text(&recharge_text, padding + 4.0, y_offset)?;
+            y_offset += 14.0;
+        }
+
+        // Collection efficiency buff
+        if collection_upgrades > 0 {
+            let collection_reduction = ((1.0 - robot.collection_cost_multiplier) * 100.0) as u32;
+            let collection_text = format!("❄ Collection -{collection_reduction}%");
+            ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(150, 200, 255, 0.9)"));
+            ctx.fill_text(&collection_text, padding + 4.0, y_offset)?;
         }
 
         Ok(())

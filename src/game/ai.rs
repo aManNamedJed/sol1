@@ -4,21 +4,38 @@ use crate::game::types::{Position, TileType};
 use crate::game::world::World;
 use std::collections::{HashMap, VecDeque};
 
-/// AI Mission: Terraform Mars by collecting as much ice as possible
-/// Strategy: Aggressive exploration with charging station network
+/// AI Strategy for Mars Terraforming:
+///
+/// CORE PRINCIPLE: Build a DENSE network of charging stations (every 10-12 tiles)
+/// This eliminates energy anxiety and enables deep exploration.
+///
+/// Decision Flow:
+/// 1. Collect ice when standing on it
+/// 2. Return to base when inventory full (3 samples)
+/// 3. Emergency retreat if critically low energy
+/// 4. At charger: charge enough for next mission, then pursue ice or explore
+/// 5. AGGRESSIVELY place charging stations every 10+ tiles from nearest operational charger
+/// 6. Pursue nearby ice (30 tile radius) if energy sufficient for round trip
+/// 7. Explore for more ice, placing stations along the way
+///
+/// KEY INSIGHTS:
+/// - Charging stations are cheap and activate at daybreak
+/// - Can "camp" at stations during night instead of returning to base
+/// - Distance measured from NEAREST charger (base or station), not just base
+/// - Stations enable exponential expansion of operational range
 pub struct RobotAI {
     last_action_time: f64,
     action_cooldown: f64,
     exploration_direction: (i32, i32),
     stuck_counter: u32,
     last_position: Position,
-    last_station_build_distance: f32,
     // Memory systems
     known_ice_locations: Vec<Position>,
     known_obstacles: HashMap<(i32, i32), bool>, // (x, y) -> is_obstacle
     unreachable_targets: HashMap<(i32, i32), u32>, // (x, y) -> failed attempts
     current_path: VecDeque<Position>,
     path_target: Option<Position>,
+    placed_stations: Vec<Position>, // Track all placed stations
 }
 
 impl RobotAI {
@@ -29,12 +46,12 @@ impl RobotAI {
             exploration_direction: (1, 0),
             stuck_counter: 0,
             last_position: Position::new(100, 100),
-            last_station_build_distance: 0.0,
             known_ice_locations: Vec::new(),
             known_obstacles: HashMap::new(),
             unreachable_targets: HashMap::new(),
             current_path: VecDeque::new(),
             path_target: None,
+            placed_stations: Vec::new(),
         }
     }
 
@@ -91,10 +108,10 @@ impl RobotAI {
     }
 
     fn update_memory(&mut self, world: &World, robot: &Robot) {
-        // Scan visible area (8 tile radius) and remember ice/obstacles
-        for dy in -8..=8 {
-            for dx in -8..=8 {
-                if dx * dx + dy * dy > 64 {
+        // Scan visible area (10 tile radius for better awareness)
+        for dy in -10..=10 {
+            for dx in -10..=10 {
+                if dx * dx + dy * dy > 100 {
                     continue;
                 }
                 let pos = Position::new(robot.position.x + dx, robot.position.y + dy);
@@ -111,6 +128,8 @@ impl RobotAI {
                             if !self.known_ice_locations.contains(&pos) {
                                 self.known_ice_locations.push(pos);
                             }
+                            // If we can see ice, it's probably reachable - clear unreachable flag
+                            self.unreachable_targets.remove(&key);
                         }
                         TileType::Regolith | TileType::Base | TileType::ChargingStation => {
                             self.known_obstacles.insert(key, false);
@@ -123,96 +142,153 @@ impl RobotAI {
         // Clean up collected ice from memory
         self.known_ice_locations
             .retain(|&pos| matches!(world.get_tile(&pos), Some(TileType::Ice)));
+
+        // Periodically reset unreachable targets (maybe paths changed with new stations)
+        // Keep the HashMap small and give targets another chance
+        if self.unreachable_targets.len() > 20 {
+            // Remove entries with low fail counts, keep only the really unreachable ones
+            self.unreachable_targets.retain(|_, &mut count| count > 3);
+        }
+
+        // Clean up placed_stations list to prevent unbounded growth
+        if self.placed_stations.len() > 100 {
+            // Keep only the most recent 50 stations
+            let new_stations = self
+                .placed_stations
+                .split_off(self.placed_stations.len() - 50);
+            self.placed_stations = new_stations;
+        }
     }
 
     fn decide_behavior(&mut self, world: &World, robot: &Robot) -> Option<InputAction> {
-        // PRIORITY 1: Standing on ice? Collect it!
-        if matches!(world.get_tile(&robot.position), Some(TileType::Ice)) {
+        // Step 1: Collect ice if standing on it
+        if matches!(world.get_tile(&robot.position), Some(TileType::Ice)) && robot.ice_samples < 3 {
             return Some(InputAction::Collect);
         }
 
-        // PRIORITY 2: Full inventory? Return to base to deposit
+        // Step 2: Full inventory? Must return to base to deposit
         if robot.ice_samples >= 3 {
-            return self.return_to_base(world, robot);
+            return self.navigate_to(world, robot, world.base_position);
         }
 
-        // Calculate key metrics for decision making
+        // Calculate distances from all chargers
         let nearest_charger = self.find_nearest_charger(world, robot);
-        let distance_to_charger = robot.position.distance_to(&nearest_charger);
-        let critical_energy = distance_to_charger * 1.2 + 5.0; // Safe margin
+        let dist_to_nearest_charger = robot.position.distance_to(&nearest_charger);
+
+        // Energy thresholds - EXTREMELY conservative to prevent stranding
+        let energy_to_reach_charger = dist_to_nearest_charger * 2.5 + 25.0; // Extra conservative!
         let at_charger = robot.position == world.base_position
             || world.is_charging_station_operational(&robot.position);
 
-        // PRIORITY 3: Dynamic charging strategy for speed
-        if at_charger {
-            // Check if there's nearby ice worth getting immediately
-            let nearby_ice = self.find_nearest_ice(world, robot, 12);
-
-            // Smart charging based on context:
-            // - If ice is very close (<=3 tiles), leave at 50% to grab it quickly
-            // - If ice nearby (<=8 tiles), leave at 70%
-            // - If exploring far, charge to 90%
-            // - During night, always charge to 95% for safety
-            let is_night = world.time_of_day >= 0.5;
-            let min_charge = if is_night {
-                95.0
-            } else if let Some(ice_pos) = nearby_ice {
-                let ice_dist = robot.position.distance_to(&ice_pos);
-                if ice_dist <= 3.0 {
-                    50.0 // Very close ice - go now!
-                } else if ice_dist <= 8.0 {
-                    70.0 // Nearby ice - moderate charge
-                } else {
-                    85.0 // Far ice - good charge
-                }
-            } else {
-                85.0 // No known ice - charge well for exploration
-            };
-
-            if robot.energy < min_charge {
-                // Keep charging
-                return None;
-            }
-        }
-
-        // PRIORITY 4: Critical energy? Get to nearest charger NOW
-        if robot.energy < critical_energy {
+        // Step 3: Emergency - critically low energy, get to charger NOW
+        if robot.energy < energy_to_reach_charger {
             return self.navigate_to(world, robot, nearest_charger);
         }
 
-        // PRIORITY 5: Proactive charging station network building
-        // Build stations systematically every 30 tiles to create infrastructure
-        let distance_from_base = robot.position.distance_to(&world.base_position);
-        let distance_from_last_station = distance_from_base - self.last_station_build_distance;
+        // Step 4: At charger - decide what to do
+        if at_charger {
+            return self.decide_at_charger(world, robot);
+        }
 
-        let should_build_station = world.can_place_charging_station(&robot.position)
-            && world.charging_stations.len() < 40  // Allow generous network
-            && robot.energy > 60.0  // Good energy for building
-            && distance_to_charger > 30.0  // Far enough from existing chargers
-            && distance_from_last_station > 30.0  // Regular 30-tile intervals
-            && distance_from_base > 35.0; // Don't clutter near base
+        // Step 5: AGGRESSIVE station placement - every 10-12 tiles from nearest operational charger
+        // This creates a dense network that enables deep exploration
+        let dist_from_nearest_operational =
+            self.distance_to_nearest_operational_charger(world, robot);
 
-        if should_build_station {
-            self.last_station_build_distance = distance_from_base;
+        if world.can_place_charging_station(&robot.position)
+            && dist_from_nearest_operational > 10.0  // Just 10 tiles out!
+            && robot.energy > energy_to_reach_charger + 25.0  // Ensure we can get back after placing
+            && !self.placed_stations.contains(&robot.position)
+        {
+            // Place the station
+            self.placed_stations.push(robot.position);
             return Some(InputAction::PlaceChargingStation);
         }
 
-        // PRIORITY 6: Ice nearby? Go get it!
-        if let Some(ice_pos) = self.find_nearest_ice(world, robot, 8) {
+        // Step 6: Look for nearby ice and pursue it aggressively
+        if let Some(ice_pos) = self.find_nearest_ice(world, robot, 30) {
+            let dist_to_ice = robot.position.distance_to(&ice_pos);
+
+            // Calculate energy for: current -> ice -> nearest charger from ice
+            let charger_from_ice = self.find_nearest_charger_from_position(world, &ice_pos);
+            let dist_ice_to_charger = ice_pos.distance_to(&charger_from_ice);
+            let total_trip_energy = (dist_to_ice + dist_ice_to_charger) * 2.0 + 25.0;
+
+            if robot.energy >= total_trip_energy {
+                return self.navigate_to(world, robot, ice_pos);
+            }
+        }
+
+        // Step 7: Explore for more ice - but ONLY if we have enough energy to return!
+        let safe_exploration_energy = dist_to_nearest_charger * 3.0 + 30.0;
+        if robot.energy >= safe_exploration_energy {
+            self.explore_for_ice(world, robot)
+        } else {
+            // Not enough energy to explore safely - return to charger
+            self.navigate_to(world, robot, nearest_charger)
+        }
+    }
+
+    fn decide_at_charger(&mut self, world: &World, robot: &Robot) -> Option<InputAction> {
+        let is_night = world.time_of_day >= 0.5;
+
+        // At base and inventory full? Deposit
+        if robot.position == world.base_position && robot.ice_samples > 0 {
+            // Let the game system handle deposit automatically
+            return None;
+        }
+
+        // Check for nearby ice
+        let nearby_ice = self.find_nearest_ice(world, robot, 20);
+
+        // Charging strategy: charge enough to complete next mission
+        let target_charge = if is_night {
+            // Night: charge to 100% to prepare for dawn
+            100.0
+        } else if let Some(ice_pos) = nearby_ice {
+            // Ice nearby: charge enough for journey + healthy margin
+            let dist = robot.position.distance_to(&ice_pos);
+            (dist * 3.0 + 25.0).min(100.0) // More conservative!
+        } else {
+            // No ice: charge to 90% for exploration
+            90.0 // Higher than before
+        };
+
+        if robot.energy < target_charge {
+            // Keep charging
+            return None;
+        }
+
+        // Charged enough - decide where to go
+        if let Some(ice_pos) = nearby_ice {
+            // Go get that ice!
             return self.navigate_to(world, robot, ice_pos);
         }
 
-        // PRIORITY 7: Explore aggressively to find ice
+        // No ice nearby - explore
         self.explore_for_ice(world, robot)
     }
 
-    fn return_to_base(&mut self, world: &World, robot: &Robot) -> Option<InputAction> {
-        self.navigate_to(world, robot, world.base_position)
+    fn distance_to_nearest_operational_charger(&self, world: &World, robot: &Robot) -> f32 {
+        let mut nearest_dist = robot.position.distance_to(&world.base_position);
+
+        for station in &world.charging_stations {
+            if station.is_operational() {
+                let dist = robot.position.distance_to(&station.position);
+                if dist < nearest_dist {
+                    nearest_dist = dist;
+                }
+            }
+        }
+
+        nearest_dist
     }
 
     fn explore_for_ice(&mut self, world: &World, robot: &Robot) -> Option<InputAction> {
-        // Update exploration direction towards unexplored areas
-        if self.stuck_counter > 2 || (robot.position.x + robot.position.y) % 15 == 0 {
+        // Exploration strategy: spiral out from base, placing stations as we go
+
+        // Update exploration direction periodically
+        if self.stuck_counter > 2 || (robot.position.x + robot.position.y) % 12 == 0 {
             self.exploration_direction = self.find_best_exploration_direction(world, robot);
         }
 
@@ -221,7 +297,7 @@ impl RobotAI {
         if self.can_move(world, robot, dx, dy) {
             return self.move_direction(dx, dy);
         } else {
-            // Blocked, find new direction
+            // Blocked - find new direction
             self.exploration_direction = self.find_best_exploration_direction(world, robot);
             return self.try_any_move(world, robot);
         }
@@ -423,46 +499,51 @@ impl RobotAI {
         ];
 
         let mut best_dir = self.exploration_direction;
-        let mut best_score = 0;
+        let mut best_score = -100;
 
         for &(dx, dy) in &directions {
             let mut score = 0;
 
-            // Look ahead 30 tiles in this direction
-            for dist in 1..30 {
+            // Look ahead in this direction
+            for dist in 1..40 {
                 let check_pos =
                     Position::new(robot.position.x + dx * dist, robot.position.y + dy * dist);
 
-                // Check if blocked by known obstacles
+                // Penalize if blocked by known obstacles
                 if self
                     .known_obstacles
                     .get(&(check_pos.x, check_pos.y))
                     .copied()
                     .unwrap_or(false)
                 {
-                    score -= 5; // Penalize directions with obstacles
+                    score -= 3;
+                    if dist < 8 {
+                        score -= 5; // Extra penalty for nearby obstacles
+                    }
                     continue;
                 }
 
-                // Score unexplored tiles highly
+                // Highly value unexplored tiles
                 if !world.is_explored(&check_pos) {
-                    score += 3;
+                    score += 4;
                 }
 
-                // Score visible ice even higher
+                // MASSIVELY value visible ice
                 if let Some(TileType::Ice) = world.get_tile(&check_pos) {
-                    score += 10;
+                    score += 30;
                 }
             }
 
-            // Bonus score if direction leads toward known ice
+            // Bonus if direction moves toward known ice
             for &ice_pos in &self.known_ice_locations {
                 let ice_dx = ice_pos.x - robot.position.x;
                 let ice_dy = ice_pos.y - robot.position.y;
 
-                // Check if this direction moves toward the ice
                 if (dx * ice_dx + dy * ice_dy) > 0 {
-                    score += 5;
+                    let ice_dist = robot.position.distance_to(&ice_pos);
+                    if ice_dist < 40.0 {
+                        score += 10;
+                    }
                 }
             }
 
@@ -472,7 +553,7 @@ impl RobotAI {
             }
         }
 
-        // If no good direction found, move away from base
+        // If no good direction found, spiral out from base
         if best_score < 5 {
             let away_x = robot.position.x - world.base_position.x;
             let away_y = robot.position.y - world.base_position.y;
@@ -487,23 +568,22 @@ impl RobotAI {
         best_dir
     }
 
-    fn find_nearest_ice(&self, world: &World, robot: &Robot, radius: i32) -> Option<Position> {
+    fn find_nearest_ice(&self, world: &World, robot: &Robot, max_radius: i32) -> Option<Position> {
         let mut best_ice = None;
         let mut best_dist = f32::MAX;
 
-        // First check known ice locations in memory
+        // Check known ice locations in memory
         for &ice_pos in &self.known_ice_locations {
             // Skip ice that we've repeatedly failed to reach
             let key = (ice_pos.x, ice_pos.y);
             if let Some(&fail_count) = self.unreachable_targets.get(&key) {
                 if fail_count > 2 {
-                    continue; // Skip unreachable targets
+                    continue;
                 }
             }
 
             let dist = robot.position.distance_to(&ice_pos);
-            if dist < best_dist && dist > 0.1 && dist <= radius as f32 {
-                // Verify it's still ice
+            if dist < best_dist && dist > 0.1 && dist <= max_radius as f32 {
                 if matches!(world.get_tile(&ice_pos), Some(TileType::Ice)) {
                     best_dist = dist;
                     best_ice = Some(ice_pos);
@@ -511,10 +591,10 @@ impl RobotAI {
             }
         }
 
-        // Also search immediate visible area
-        for dy in -radius..=radius {
-            for dx in -radius..=radius {
-                if dx * dx + dy * dy > radius * radius {
+        // Also scan immediate area for ice we might not have in memory
+        for dy in -max_radius..=max_radius {
+            for dx in -max_radius..=max_radius {
+                if dx * dx + dy * dy > max_radius * max_radius {
                     continue;
                 }
 
@@ -533,12 +613,16 @@ impl RobotAI {
     }
 
     fn find_nearest_charger(&self, world: &World, robot: &Robot) -> Position {
+        self.find_nearest_charger_from_position(world, &robot.position)
+    }
+
+    fn find_nearest_charger_from_position(&self, world: &World, pos: &Position) -> Position {
         let mut nearest = world.base_position;
-        let mut nearest_dist = robot.position.distance_to(&world.base_position);
+        let mut nearest_dist = pos.distance_to(&world.base_position);
 
         for station in &world.charging_stations {
             if station.is_operational() {
-                let dist = robot.position.distance_to(&station.position);
+                let dist = pos.distance_to(&station.position);
                 if dist < nearest_dist {
                     nearest = station.position;
                     nearest_dist = dist;

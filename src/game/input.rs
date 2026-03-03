@@ -11,7 +11,6 @@ pub enum InputAction {
     MoveDown,
     MoveLeft,
     MoveRight,
-    Scan,
     Collect,
     PlaceChargingStation,
     ToggleAI,
@@ -81,8 +80,6 @@ impl InputHandler {
             Some(InputAction::MoveLeft)
         } else if just_pressed[Self::KEY_RIGHT] {
             Some(InputAction::MoveRight)
-        } else if just_pressed[Self::KEY_SPACE] {
-            Some(InputAction::Scan)
         } else if just_pressed[Self::KEY_E] {
             Some(InputAction::Collect)
         } else if just_pressed[Self::KEY_B] {
@@ -107,7 +104,6 @@ impl InputHandler {
             "ArrowDown" => Some(Self::KEY_DOWN),
             "ArrowLeft" => Some(Self::KEY_LEFT),
             "ArrowRight" => Some(Self::KEY_RIGHT),
-            " " => Some(Self::KEY_SPACE),
             "e" | "E" => Some(Self::KEY_E),
             "b" | "B" => Some(Self::KEY_B),
             "a" | "A" => Some(Self::KEY_A),
@@ -119,8 +115,7 @@ impl InputHandler {
     const KEY_DOWN: usize = 1;
     const KEY_LEFT: usize = 2;
     const KEY_RIGHT: usize = 3;
-    const KEY_SPACE: usize = 4;
-    const KEY_E: usize = 5;
-    const KEY_B: usize = 6;
-    const KEY_A: usize = 7;
+    const KEY_E: usize = 4;
+    const KEY_B: usize = 5;
+    const KEY_A: usize = 6;
 }

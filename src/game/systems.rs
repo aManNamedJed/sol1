@@ -7,8 +7,8 @@ pub struct GameSystems;
 impl GameSystems {
     /// Update time progression
     pub fn update_time(world: &mut World, delta_time: f32) {
-        // One full day-night cycle takes about 2 minutes (120 seconds)
-        let time_speed = 1.0 / 120.0;
+        // One full day-night cycle takes about 1 minute (60 seconds)
+        let time_speed = 1.0 / 60.0;
         world.advance_time(delta_time * time_speed);
     }
 
@@ -63,7 +63,7 @@ impl GameSystems {
 
         // Restore full power
         robot.restore_full_power();
-        
+
         false
     }
 
@@ -80,7 +80,7 @@ impl GameSystems {
     /// Returns number of ice samples deposited (0 if none)
     pub fn update_ice_processing(world: &mut World, robot: &mut Robot, delta_time: f32) -> u32 {
         let mut deposited = 0;
-        
+
         // Deposit ice if at base and carrying samples
         if robot.position == world.base_position && robot.ice_samples > 0 {
             deposited = robot.ice_samples;
@@ -92,7 +92,7 @@ impl GameSystems {
         if world.ice_stored > 0 {
             world.process_ice(delta_time);
         }
-        
+
         deposited
     }
 }

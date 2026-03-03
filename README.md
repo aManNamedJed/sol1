@@ -55,7 +55,6 @@ sol1/
 - **Ice Samples**: Carries collected ice (auto-deposits at base)
 - **Actions**:
   - Move: 1 energy per tile
-  - Scan: 2 energy
   - Collect: 3 energy (depletes ice deposits)
   - Place Charging Station: 5 energy
 
@@ -106,7 +105,6 @@ sol1/
 | Key       | Action                 |
 | --------- | ---------------------- |
 | `↑ ↓ ← →` | Move robot             |
-| `Space`   | Scan area              |
 | `E`       | Collect ice resource   |
 | `B`       | Build charging station |
 | `A`       | Toggle AI autopilot    |

@@ -138,7 +138,7 @@ impl Game {
         // Base vision is 6, + 1 every 10% terraform (milestones 1, 6, 11, 16, 21, etc. = 2%, 12%, 22%, etc.)
         let vision_upgrades = self.last_milestone / 5; // Milestone 1, 6, 11, etc.
         let vision_radius = 6 + vision_upgrades as i32;
-        
+
         let robot_pos = self.robot.position;
 
         for dy in -vision_radius..=vision_radius {
@@ -158,36 +158,6 @@ impl Game {
             InputAction::MoveDown => self.try_move(0, 1),
             InputAction::MoveLeft => self.try_move(-1, 0),
             InputAction::MoveRight => self.try_move(1, 0),
-            InputAction::Scan => {
-                if self.robot.scan() {
-                    let tile = self
-                        .world
-                        .get_tile(&self.robot.position)
-                        .unwrap_or(crate::game::types::TileType::Regolith);
-                    let tile_name = match tile {
-                        crate::game::types::TileType::Regolith => "regolith",
-                        crate::game::types::TileType::Rock => "rock formation",
-                        crate::game::types::TileType::Ice => "ice deposit",
-                        crate::game::types::TileType::Base => "base station",
-                        crate::game::types::TileType::ChargingStation => {
-                            if let Some(station) =
-                                self.world.get_charging_station(&self.robot.position)
-                            {
-                                if station.is_operational() {
-                                    "operational charging station"
-                                } else {
-                                    "charging station (booting...)"
-                                }
-                            } else {
-                                "charging station"
-                            }
-                        }
-                    };
-                    self.add_message(format!("Scanning... detected {}", tile_name));
-                } else {
-                    self.add_message("Insufficient energy".to_string());
-                }
-            }
             InputAction::Collect => {
                 if self.robot.collect() {
                     let tile = self
@@ -198,7 +168,10 @@ impl Game {
                         crate::game::types::TileType::Ice => {
                             self.robot.ice_samples += 1;
                             // Deplete the ice resource - turn it into regolith
-                            self.world.set_tile(&self.robot.position, crate::game::types::TileType::Regolith);
+                            self.world.set_tile(
+                                &self.robot.position,
+                                crate::game::types::TileType::Regolith,
+                            );
                             self.add_message(format!(
                                 "Collected ice sample (carrying {})",
                                 self.robot.ice_samples
@@ -266,7 +239,7 @@ impl Game {
     fn check_milestones(&mut self) {
         // Calculate current milestone (in 2% increments)
         let current_milestone = (self.world.mars_health / 0.02).floor() as u32;
-        
+
         // Check if we've crossed any new milestones
         if current_milestone > self.last_milestone {
             for milestone in (self.last_milestone + 1)..=current_milestone {
@@ -278,7 +251,7 @@ impl Game {
 
     fn apply_milestone_upgrade(&mut self, milestone: u32) {
         let percent = milestone * 2;
-        
+
         // Cycle through upgrade types for variety
         match milestone % 5 {
             1 => {
@@ -293,7 +266,8 @@ impl Game {
             }
             3 => {
                 // Movement efficiency (every 6%, 16%, 26%, etc.)
-                self.robot.movement_cost_multiplier = (self.robot.movement_cost_multiplier - 0.04).max(0.4);
+                self.robot.movement_cost_multiplier =
+                    (self.robot.movement_cost_multiplier - 0.04).max(0.4);
                 self.add_message(format!("{}% Terraform: Movement cost reduced", percent));
             }
             4 => {
@@ -303,7 +277,8 @@ impl Game {
             }
             0 => {
                 // Collection efficiency (every 10%, 20%, 30%, etc.)
-                self.robot.collection_cost_multiplier = (self.robot.collection_cost_multiplier - 0.08).max(0.3);
+                self.robot.collection_cost_multiplier =
+                    (self.robot.collection_cost_multiplier - 0.08).max(0.3);
                 self.add_message(format!("{}% Terraform: Collection cost reduced", percent));
             }
             _ => {}
