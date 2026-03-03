@@ -414,25 +414,25 @@ impl Renderer {
         ctx.fill();
 
         // Draw day/night gradient as two semicircles
-        // Note: Canvas arcs go counter-clockwise by default
-        // arc(0, PI) = bottom half, arc(PI, 2*PI) = top half
-
-        // Night side (dark purple) - bottom half
-        ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(50, 30, 80, 0.8)"));
+        // Left half = day (blue), Right half = night (purple)
+        // Angles: 0 = right, PI/2 = top, PI = left, 3*PI/2 = bottom
+        
+        // Day side (light blue) - left half
+        ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(135, 206, 235, 0.6)"));
         ctx.begin_path();
-        ctx.arc(dial_x, dial_y, dial_radius - 3.0, 0.0, std::f64::consts::PI)?;
+        ctx.arc(dial_x, dial_y, dial_radius - 3.0, std::f64::consts::PI / 2.0, 3.0 * std::f64::consts::PI / 2.0)?;
         ctx.close_path();
         ctx.fill();
 
-        // Day side (light blue) - top half
-        ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(135, 206, 235, 0.6)"));
+        // Night side (dark purple) - right half
+        ctx.set_fill_style(&wasm_bindgen::JsValue::from_str("rgba(50, 30, 80, 0.8)"));
         ctx.begin_path();
         ctx.arc(
             dial_x,
             dial_y,
             dial_radius - 3.0,
-            std::f64::consts::PI,
-            std::f64::consts::PI * 2.0,
+            -std::f64::consts::PI / 2.0,
+            std::f64::consts::PI / 2.0,
         )?;
         ctx.close_path();
         ctx.fill();
